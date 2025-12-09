@@ -1,95 +1,70 @@
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
-const PORT = 3001;
-const DATA_FILE = path.join(__dirname, 'data.json');
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Helper functions to read/write data
-const readData = () => {
-  try {
-    const data = fs.readFileSync(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return { items: [] };
-  }
-};
+// In-memory data store
+let claims = [];
+let rules = [];
 
-const writeData = (data) => {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-};
-
-// GET all items
-app.get('/api/items', (req, res) => {
-  const data = readData();
-  res.json(data.items);
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// POST new item
-app.post('/api/items', (req, res) => {
-  const { name } = req.body;
-  
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: 'Item name is required' });
-  }
+// Claims endpoints
+app.get('/api/claims', (req, res) => {
+  res.json(claims);
+});
 
-  const data = readData();
-  const newItem = {
+app.post('/api/claims', (req, res) => {
+  const claim = {
     id: uuidv4(),
-    name: name.trim(),
-    purchased: false,
+    ...req.body,
+    status: 'pending',
     createdAt: new Date().toISOString()
   };
-  
-  data.items.push(newItem);
-  writeData(data);
-  
-  res.status(201).json(newItem);
+  claims.push(claim);
+  res.status(201).json(claim);
 });
 
-// PUT update item (toggle purchased)
-app.put('/api/items/:id', (req, res) => {
-  const { id } = req.params;
-  const { purchased } = req.body;
-  
-  const data = readData();
-  const itemIndex = data.items.findIndex(item => item.id === id);
-  
-  if (itemIndex === -1) {
-    return res.status(404).json({ error: 'Item not found' });
-  }
-  
-  data.items[itemIndex].purchased = purchased;
-  writeData(data);
-  
-  res.json(data.items[itemIndex]);
+app.get('/api/claims/:id', (req, res) => {
+  const claim = claims.find(c => c.id === req.params.id);
+  if (!claim) return res.status(404).json({ error: 'Claim not found' });
+  res.json(claim);
 });
 
-// DELETE item
-app.delete('/api/items/:id', (req, res) => {
-  const { id } = req.params;
-  
-  const data = readData();
-  const itemIndex = data.items.findIndex(item => item.id === id);
-  
-  if (itemIndex === -1) {
-    return res.status(404).json({ error: 'Item not found' });
-  }
-  
-  data.items.splice(itemIndex, 1);
-  writeData(data);
-  
-  res.status(204).send();
+// Rules endpoints
+app.get('/api/rules', (req, res) => {
+  res.json(rules);
 });
 
+app.post('/api/rules', (req, res) => {
+  const rule = {
+    id: uuidv4(),
+    ...req.body,
+    active: true,
+    createdAt: new Date().toISOString()
+  };
+  rules.push(rule);
+  res.status(201).json(rule);
+});
+
+// Analytics endpoint
+app.get('/api/analytics', (req, res) => {
+  res.json({
+    totalClaims: claims.length,
+    pendingClaims: claims.filter(c => c.status === 'pending').length,
+    approvedClaims: claims.filter(c => c.status === 'approved').length,
+    deniedClaims: claims.filter(c => c.status === 'denied').length,
+    activeRules: rules.filter(r => r.active).length
+  });
+});
+
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Shopping List API running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
-
